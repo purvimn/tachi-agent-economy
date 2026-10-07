@@ -1,0 +1,24 @@
+{
+  "name": "@tachi-hack/agent-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@tachibtc/tachi-sdk-ts": "^0.2.1",
+    "better-sqlite3": "^11.9.1",
+    "nostr-tools": "^2.10.4",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.4.0"
+  }
+}

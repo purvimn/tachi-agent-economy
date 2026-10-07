@@ -1,0 +1,21 @@
+{
+  "name": "@tachi-hack/server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@tachi-hack/agent-sdk": "*",
+    "express": "^4.21.2",
+    "nostr-tools": "^2.10.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.4.0"
+  }
+}

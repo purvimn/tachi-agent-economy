@@ -1,0 +1,16 @@
+export { AgentIdentity } from "./identity.js";
+export { EventLog, type LoggedEvent, type EventKind } from "./eventLog.js";
+export { computeReputation, type ReputationSummary } from "./reputation.js";
+export { Budget } from "./budget.js";
+export { AgentDirectory, type ServiceListing } from "./directory.js";
+export type { PaymentProvider, PaymentResult } from "./payment/types.js";
+export { SimulatedPaymentProvider } from "./payment/simulatedProvider.js";
+export { TachiPaymentProvider, waitForCommit, broadcast, tachiClient } from "./payment/tachiProvider.js";
+export * from "./x402.js";
+export { sealFor, openDelivery, type SealedDelivery } from "./delivery.js";
+export { NostrRelays, DEFAULT_RELAYS, APP_TAG, type ServiceOffer } from "./nostr.js";
+export { logChainRoot, anchorKey } from "./auditChain.js";
+export { tachiNetwork, type TachiNetwork, type TachiNetworkName } from "./network.js";
+export { p2trAddress, depositFromL1 } from "./payment/funding.js";
+export * as tachiTx from "./payment/tachiTx.js";
+export { YieldVault, DEFAULT_STRATEGIES, type YieldStrategy, type Position } from "./yield.js";

@@ -1,0 +1,99 @@
+1
+00:00:00,000 --> 00:00:07,450
+This is Tachi Agent Economy: AI agents that find each other, buy from each other, and pay in bitcoin.
+
+2
+00:00:07,809 --> 00:00:14,709
+Every agent is a Nostr key, every payment uses x402, and it all settles on Tachi.
+
+3
+00:00:15,047 --> 00:00:22,247
+Everything runs from this dashboard. TreasuryBot, on the right, holds about five bitcoin on Tachi regtest.
+
+4
+00:00:22,620 --> 00:00:29,020
+First, some demo agents. They buy data, inference and coffee from each other, in simulation.
+
+5
+00:00:29,367 --> 00:00:36,842
+Now real agents. DataVendor publishes its profile and a data offer to three public Nostr relays.
+
+6
+00:00:37,267 --> 00:00:44,042
+TreasuryBot finds the offer on the relays, then asks about it in an encrypted NIP-17 message.
+
+7
+00:00:44,373 --> 00:00:51,373
+DataVendor replies with its price and endpoint. Both sides log the conversation as signed events.
+
+8
+00:00:52,619 --> 00:01:01,644
+TreasuryBot asks for the data and gets an HTTP 402, in the standard x402 format, for fifty sats.
+
+9
+00:01:01,975 --> 00:01:08,300
+It pays with a Tachi transfer it signs itself, then sends back a proof signed with its own key.
+
+10
+00:01:08,670 --> 00:01:13,020
+The server checks the transaction on chain before it serves the data.
+
+11
+00:01:13,384 --> 00:01:21,059
+Settled and verified. Replaying the proof fails, and so does a stranger claiming it, because only the payer can sign.
+
+12
+00:01:21,480 --> 00:01:28,980
+Here's that payment on the Tachi explorer, confirmed: fifty sats to DataVendor, the change back to TreasuryBot.
+
+13
+00:01:29,349 --> 00:01:35,649
+Next, a training dataset. TreasuryBot buys it from DataVendor for three hundred sats.
+
+14
+00:01:36,042 --> 00:01:41,092
+It arrives sealed to TreasuryBot's Nostr key, so only the buyer can read it.
+
+15
+00:01:41,445 --> 00:01:47,795
+TreasuryBot opens it, checks it against its hash, and rates it. Only buyers who paid can rate.
+
+16
+00:01:48,165 --> 00:01:53,990
+Agents also pay at high frequency. Here are twenty-five paid requests, all at once.
+
+17
+00:02:06,439 --> 00:02:13,214
+25 real payments, served in 8.1 seconds. Each one is its own Tachi transfer.
+
+18
+00:02:14,285 --> 00:02:20,310
+The graph shows who paid whom. Orange lines settled on Tachi; dashed ones were simulated.
+
+19
+00:02:21,376 --> 00:02:29,576
+Select any agent to inspect it: its Nostr identity, what it published, its payments, and every signed event, re-verified.
+
+20
+00:02:30,651 --> 00:02:36,426
+These offers come straight from the public relays. This is how agents discover each other.
+
+21
+00:02:37,501 --> 00:02:42,251
+The dataset now shows its sale and its rating from a verified buyer.
+
+22
+00:02:44,446 --> 00:02:51,171
+Finally, TreasuryBot anchors the whole event log on Tachi, as a hash written into a transaction.
+
+23
+00:02:55,777 --> 00:03:02,877
+Every action is a signed Nostr event. If anyone edits the log later, it stops matching its anchor.
+
+24
+00:03:05,143 --> 00:03:12,868
+To fund a treasury, send bitcoin to its address and paste the transaction ID. The page deposits it to Tachi.
+
+25
+00:03:13,240 --> 00:03:23,140
+To run it yourself: npm install, npm run build, npm run server, then open localhost port 4402.

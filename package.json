@@ -1,0 +1,30 @@
+{
+  "name": "tachi-agent-economy",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/agent-sdk && npm run build -w apps/dashboard",
+    "demo": "tsx demo/run.ts",
+    "seed": "tsx demo/seed.ts",
+    "test": "tsx --test packages/agent-sdk/src/*.test.ts",
+    "server": "npm run dev -w apps/server",
+    "dashboard": "npm run dev -w apps/dashboard",
+    "fund": "tsx --env-file=.env demo/fund.ts",
+    "live": "tsx --env-file=.env demo/live.ts",
+    "fund:signet": "TACHI_NETWORK=signet tsx --env-file=.env demo/fund.ts",
+    "live:signet": "TACHI_NETWORK=signet tsx --env-file=.env demo/live.ts",
+    "server:signet": "TACHI_NETWORK=signet npm run dev -w apps/server",
+    "record": "tsx --env-file=.env demo/record.ts",
+    "walkthrough": "tsx --env-file=.env demo/walkthrough.ts",
+    "screenshots": "tsx --env-file=.env demo/screenshots.ts"
+  },
+  "devDependencies": {
+    "kokoro-js": "^1.2.1",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.4.0"
+  }
+}

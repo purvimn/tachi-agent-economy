@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.db
+.env
+.env.*
+!.env.example
+*.claude
+*.claude-flow
+*.swarm
+
+
+.DS_Store
+*.tsbuildinfo

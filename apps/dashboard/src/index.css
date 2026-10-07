@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #e4e9ee;
+  --color-paper-2: #edf1f4;
+  --color-ink: #15202b;
+  --color-ink-2: #4b5a6a;
+  --color-rule: #c2ccd6;
+  --color-btc: #e8840f;
+  --color-btc-ink: #9a5300;
+  --color-ok: #2e6b4f;
+  --font-sans: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule);
+  text-underline-offset: 3px;
+}
+a:hover {
+  text-decoration-color: currentColor;
+}
+:focus-visible {
+  outline: 2px solid var(--color-btc);
+  outline-offset: 2px;
+}
+
+/* Plain ledger tables: hierarchy from type and rules, not boxes. */
+.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+.ledger th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-ink-2);
+  font-size: 0.8125rem;
+  padding: 0 1rem 0.5rem 0;
+  border-bottom: 1px solid var(--color-ink);
+}
+.ledger td {
+  padding: 0.625rem 1rem 0.625rem 0;
+  border-bottom: 1px solid var(--color-rule);
+  vertical-align: top;
+}
+.ledger .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
