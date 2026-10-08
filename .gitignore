@@ -14,3 +14,6 @@ dist/
 
 # vault ledgers (real funds, per network)
 data/
+
+# local agent tooling
+agentdb.rvf*
