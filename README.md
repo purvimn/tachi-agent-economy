@@ -112,6 +112,26 @@ If *Make a real payment* is greyed out, the treasury is empty:
 
 ---
 
+## Self-custody: TAURUS vault proof of concept
+
+`npm run taurus` (regtest) creates a real TAURUS vault with
+[`@tachibtc/taurus-vault-core`](https://www.npmjs.com/package/@tachibtc/taurus-vault-core) and shows
+the owner can always get their bitcoin back alone:
+
+1. A vault address on L1 with two spend paths: the owner + a 5-of-7 Tachi validator quorum
+   (cooperative), or the owner alone after 144 blocks (~1 day; unilateral exit). The key path is a
+   NUMS point, so nobody else can spend it.
+2. Funds it with a 100,000-sat L1 deposit and registers it on Tachi (`TxVaultOpen`); Tachi lists it as
+   `open` with `csv_delay: 144`, `threshold: 5`, a 7-key quorum.
+3. Builds and signs the owner's unilateral exit with no daemon or validator involved. bitcoind
+   refuses it today (`non-BIP68-final`) and accepts it once the deposit has 144 confirmations: the
+   timelock, not the operator, decides.
+
+The owner seed is saved to `.env` as `TAURUS_MNEMONIC` (back it up); progress and the signed exit are
+saved in `data/`, so a rerun resumes. First run on regtest: vault
+`96e7cb2fed5357915fae83712cc35c5ed69d2071e278517b37a63f6653f5251a`, deposit
+`b9579723b02a58932ac1dfceb8c6b55019be8f438afb3a613ad2b54d4199b9cf`.
+
 ## Command reference
 
 | Command | What it does |
@@ -125,6 +145,7 @@ If *Make a real payment* is greyed out, the treasury is empty:
 | `npm run walkthrough` | records the narrated walkthrough → `docs/demo-walkthrough.mp4` + `.srt` |
 | `npm run record` | records the 40-second preview → `docs/demo-preview.mp4` |
 | `npm run screenshots` | captures `docs/screenshots/*.png` |
+| `npm run taurus` | TAURUS vault proof of concept: create, deposit, register, signed unilateral exit (regtest) |
 
 The three recording commands drive the real app in Google Chrome on a throwaway server (port
 4410), run the real actions (about 1,000 sats per run, plus public relay traffic), and need `ffmpeg`. Narration uses the open-source
@@ -269,9 +290,10 @@ docs/                          preview + walkthrough videos, subtitles, screensh
   VTXOs share blocks, which is how a burst reaches several per second.
 - **Sealed deliveries are one NIP-44 payload** (up to 64 KB); larger datasets need chunking.
 - **Each anchor costs 1 sat + fee**; the 1-sat output is a commitment, not meant to be spent.
-- **The vault key is held by the server** (derived from the treasury key), so the vault is not yet
-  self-custodial; a TAURUS vault or timelocked exit is the upgrade. The ledger is saved per network
-  in `data/vault-<network>.json` and replayed on start.
+- **The yield vault's key is held by the server** (derived from the treasury key), so pooled deposits
+  are not yet self-custodial. The ledger is saved per network in `data/vault-<network>.json` and
+  replayed on start. The path to self-custody is proven separately with a real TAURUS vault
+  (`npm run taurus`, below); wiring lending to it is the next step.
 - **One yield source:** loans to agents. Rebalancing is the utilization cap between lending and
   liquid reserves, not yet across other Tachi DeFi primitives.
 - **Reputation is a simple weighted score** (`jobs × 2 + rating × 15`), not a fraud-resistant model.

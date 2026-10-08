@@ -19,9 +19,12 @@
     "server:signet": "TACHI_NETWORK=signet npm run dev -w apps/server",
     "record": "tsx --env-file=.env demo/record.ts",
     "walkthrough": "tsx --env-file=.env demo/walkthrough.ts",
-    "screenshots": "tsx --env-file=.env demo/screenshots.ts"
+    "screenshots": "tsx --env-file=.env demo/screenshots.ts",
+    "taurus": "tsx --env-file=.env demo/taurus-poc.ts"
   },
   "devDependencies": {
+    "@tachibtc/taurus-vault-core": "^0.3.5",
+    "@tachibtc/taurus-wallet-aggregator": "^0.4.5",
     "kokoro-js": "^1.2.1",
     "playwright-core": "^1.63.0",
     "tsx": "^4.23.12",
