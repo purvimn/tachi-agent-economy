@@ -1,6 +1,7 @@
 // Captures submission screenshots into docs/screenshots/ (1440×900 at 2x).
 //   npm run screenshots
-// Runs every dashboard action against a fresh server: real Tachi payments (~1,000 sats in total)
+// Runs every dashboard action against a fresh server: real Tachi payments (~1,000 sats spent, plus
+// a vault deposit that stays in the vault)
 // and public Nostr relay traffic. Needs Google Chrome.
 import path from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
@@ -56,6 +57,10 @@ async function main() {
 
     await shot(page, "01-high-frequency-payments.png");
     await shot(page, "02-payment-graph.png", page.getByRole("img", { name: "Payments between agents" }), 60);
+    await act(page, "Deposit and withdraw", /Deposited [\d,]+ sats into the vault/);
+    await act(page, "Lend to an agent", /ResearchBot borrowed/, 180_000);
+    await shot(page, "11-agent-loan-repaid.png", page.getByText(/ResearchBot borrowed/), 640);
+    await shot(page, "12-yield-vault.png", heading("Yield vault"));
     await page.getByRole("button", { name: "DataVendor", exact: true }).click();
     await page.getByText(/signed events verify against this key/).waitFor({ timeout: 15_000 });
     await shot(page, "06-agent-inspector.png", heading("Agents"));

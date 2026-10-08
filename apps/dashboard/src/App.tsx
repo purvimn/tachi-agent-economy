@@ -865,7 +865,7 @@ export default function App() {
                     ["Yield earned", `${fmt(realVault.realizedYieldSats)} sats`],
                     ["Share price", realVault.sharePrice.toFixed(6)],
                     ["Utilization", `${(realVault.utilization * 100).toFixed(0)}% of ${realVault.maxUtilization * 100}% max`],
-                    ["Written off", `${fmt(realVault.writtenOffSats)} sats (${fmt(realVault.sponsorCoveredSats)} by sponsors)`],
+                    ["Written off", realVault.writtenOffSats ? `${fmt(realVault.writtenOffSats)} sats, ${fmt(realVault.sponsorCoveredSats)} by sponsors` : "0 sats"],
                   ] as const
                 ).map(([k, v]) => (
                   <div key={k}>
@@ -883,8 +883,7 @@ export default function App() {
                 <ul className="mt-3 space-y-1 text-sm">
                   {realVault.loans.map((l) => (
                     <li key={l.pubkey}>
-                      Open loan to <span className="font-mono text-[12px]">{short(l.pubkey, 8)}</span>, vouched for by{" "}
-                      <span className="font-mono text-[12px]">{short(l.sponsor, 8)}</span>: {fmt(l.principal + l.feeSats - l.repaid)} sats due by{" "}
+                      Open loan to {who(l.pubkey)}, vouched for by {who(l.sponsor)}: {fmt(l.principal + l.feeSats - l.repaid)} sats due by{" "}
                       {new Date(l.dueAt * 1000).toLocaleTimeString()}
                     </li>
                   ))}
@@ -892,9 +891,9 @@ export default function App() {
               )}
               {realVault.ledger.length > 0 && (
                 <ul className="mt-3 space-y-1 text-sm">
-                  {realVault.ledger.slice(0, 12).map((l, i) => (
+                  {realVault.ledger.slice(0, 8).map((l, i) => (
                     <li key={l.txRef ?? `${l.type}-${i}`}>
-                      {LEDGER_LABEL[l.type]} of {fmt(l.amountSats)} sats, <span className="font-mono text-[12px]">{short(l.pubkey, 8)}</span>
+                      {LEDGER_LABEL[l.type]} of {fmt(l.amountSats)} sats, {who(l.pubkey)}
                       {l.txRef && (
                         <>
                           {" · "}

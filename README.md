@@ -5,8 +5,8 @@ in bitcoin settled on [Tachi](https://tachibtc.com). Every agent is a Nostr key,
 signed event, and every real payment is a VTXO transfer the agent signs itself and the Tachi
 validators commit. Built for the OP_Freedom hackathon, AI track.
 
-**Videos:** [30-second preview](docs/demo-preview.mp4) ·
-[narrated walkthrough, 3½ min](docs/demo-walkthrough.mp4) (subtitles: [`.srt`](docs/demo-walkthrough.srt)) ·
+**Videos:** [40-second preview](docs/demo-preview.mp4) ·
+[narrated walkthrough, 4⅓ min](docs/demo-walkthrough.mp4) (subtitles: [`.srt`](docs/demo-walkthrough.srt)) ·
 [screenshots](docs/screenshots/)
 
 | Bounty | Requirement | Where |
@@ -69,7 +69,7 @@ npm run server            # Tachi regtest   (or: npm run server:signet)
 
 Open **<http://localhost:4402>**. Everything from here is done on the page.
 
-### 4. Demo walkthrough (about 3 minutes)
+### 4. Demo walkthrough (about 4 minutes)
 
 Each button shows its steps as they run, then a one-line result.
 
@@ -123,7 +123,7 @@ If *Make a real payment* is greyed out, the treasury is empty:
 | `npm run demo` | offline end-to-end run with simulated payments and self-checks |
 | `npm test` | SDK unit tests (identity, reputation, vault, budget, TachiTx encoding) |
 | `npm run walkthrough` | records the narrated walkthrough → `docs/demo-walkthrough.mp4` + `.srt` |
-| `npm run record` | records the 30-second preview → `docs/demo-preview.mp4` |
+| `npm run record` | records the 40-second preview → `docs/demo-preview.mp4` |
 | `npm run screenshots` | captures `docs/screenshots/*.png` |
 
 The three recording commands drive the real app in Google Chrome on a throwaway server (port

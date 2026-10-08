@@ -1,6 +1,6 @@
-// Records the silent 30-second preview: docs/demo-preview.mp4.
+// Records the silent 40-second preview: docs/demo-preview.mp4.
 //   npm run record
-// Makes one real ~50-sat payment from the treasury. See demo/recording.ts for requirements.
+// Makes real payments from the treasury and one vault loan. See demo/recording.ts for requirements.
 import path from "node:path";
 import { Recorder, startServer, wait } from "./recording.js";
 
@@ -19,7 +19,7 @@ async function main() {
     await rec.show(page, "Every agent is a Nostr key. Start by adding a few.", 2400);
 
     await page.getByRole("button", { name: "Add demo agents" }).click();
-    await rec.caption(page, "Five agents buy data, inference and coffee from each other over <b>x402</b>.");
+    await rec.caption(page, "Four agents buy data, inference and coffee from each other over <b>x402</b>.");
     await page.getByText("Demo agents added.").waitFor({ timeout: 30_000 });
     await wait(1200);
     await page.evaluate(() => window.scrollTo({ top: 330, behavior: "smooth" }));
@@ -41,6 +41,15 @@ async function main() {
     await page.evaluate(() => window.scrollTo({ top: 420, behavior: "smooth" }));
     await rec.show(page, "<b>Orange</b> lines settled on Tachi. Dashed ones were simulated.", 3000);
 
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    await wait(700);
+    await page.getByRole("button", { name: "Lend to an agent" }).click();
+    await rec.caption(page, "Yield: the vault lends to an agent a depositor <b>vouches</b> for. It earns over x402 and repays with a fee.");
+    await page.getByText(/ResearchBot borrowed/).waitFor({ timeout: 180_000 });
+    await wait(2500);
+    await page.getByRole("heading", { name: "Yield vault", exact: true }).evaluate((el) => window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" }));
+    await rec.show(page, "The fee is depositors' <b>yield</b>: owed matches what the vault holds on chain.", 3800);
+
     await rec.cut();
     const ex = page; // same tab, see Recorder.capture
     await ex.goto(tx!, { waitUntil: "domcontentloaded" });
@@ -50,12 +59,12 @@ async function main() {
     await rec.capture(ex);
     await rec.show(ex, "And it's on the Tachi explorer: <b>confirmed</b>.", 3800);
     await rec.caption(ex, ""); // the closing card stands alone
-    await rec.card(ex, `<h1>Agents that pay agents.</h1><p><i></i>Nostr identity, x402 payments, bitcoin settlement on Tachi.</p><p style="margin-top:36px"><code>npm run server</code> → open localhost:4402</p>`);
+    await rec.card(ex, `<h1>Agents that pay agents.</h1><p><i></i>Nostr identity, x402 payments, a yield vault, bitcoin settlement on Tachi.</p><p style="margin-top:36px"><code>npm run server</code> → open localhost:4402</p>`);
     await wait(3400);
     await rec.close();
 
-    const out = rec.encode(OUTPUT, { fitSeconds: 30 });
-    console.log(`Wrote ${OUTPUT} (30s, recorded ${out.recorded.toFixed(1)}s). Payment: ${tx}`);
+    const out = rec.encode(OUTPUT, { fitSeconds: 40 });
+    console.log(`Wrote ${OUTPUT} (40s, recorded ${out.recorded.toFixed(1)}s). Payment: ${tx}`);
   } finally {
     await rec.close().catch(() => {});
     server.stop();

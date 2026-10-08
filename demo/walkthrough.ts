@@ -1,7 +1,7 @@
 // Records the narrated end-to-end demo: docs/demo-walkthrough.mp4 (voice + subtitle track) and
 // docs/demo-walkthrough.srt.
 //   npm run walkthrough            (NARRATOR_VOICE=… to change the voice)
-// Runs every dashboard action: real Tachi payments (~1,000 sats in total) and public Nostr relay
+// Runs every dashboard action: real Tachi payments (~1,000 sats, plus a vault deposit) and public Nostr relay
 // traffic. See demo/recording.ts for requirements.
 import path from "node:path";
 import type { Page } from "playwright-core";
@@ -61,8 +61,13 @@ async function main() {
     // The explorer
     const tx = await page.getByRole("link", { name: "View the transaction" }).getAttribute("href");
     await rec.cut();
-    await page.goto(tx!, { waitUntil: "domcontentloaded" });
-    await page.getByText("Confirmed").first().waitFor({ timeout: 30_000 });
+    // The explorer can take a little while to index a fresh transaction: reload until it shows.
+    for (let i = 0; ; i++) {
+      await page.goto(tx!, { waitUntil: "domcontentloaded" });
+      const shown = await page.getByText("Confirmed").first().waitFor({ timeout: 30_000 }).then(() => true, () => false);
+      if (shown) break;
+      if (i === 3) throw new Error(`The explorer never showed ${tx} as confirmed`);
+    }
     await rec.prep(page);
     await wait(800);
     await rec.capture(page);
@@ -85,6 +90,18 @@ async function main() {
     await page.getByText(/paid requests served/).waitFor({ timeout: 180_000 });
     const burst = await job();
     await rec.say(page, `${burst.served} real payments, served in ${Number(burst.seconds).toFixed(1)} seconds. Each one is its own Tachi transfer.`);
+
+    // Yield vault: real deposits, vouched loans, yield from agent revenue
+    await rec.say(page, "Agents can also put idle sats to work. TreasuryBot deposits into the <b>vault</b> with a Tachi transfer, then withdraws part of it.", click(page, "Deposit and withdraw"));
+    await page.getByText(/Deposited [\d,]+ sats into the vault/).waitFor({ timeout: 120_000 });
+    await rec.say(page, "Shares are minted only after the deposit verifies on chain. The withdrawal is a request TreasuryBot signs, paid back on chain.");
+    await rec.say(page, "Where does the yield come from? Agents borrow working capital from the vault. An agent nobody vouches for is refused.", click(page, "Lend to an agent"));
+    await rec.say(page, "TreasuryBot vouches for ResearchBot, and its own shares cover a default first. ResearchBot borrows two thousand sats.");
+    await rec.say(page, "It buys data with the loan, earns by selling inference over x402, and repays the loan with a fee.");
+    await page.getByText(/ResearchBot borrowed/).waitFor({ timeout: 180_000 });
+    await wait(3500);
+    await scrollToEl(page, heading(page, "Yield vault"));
+    await rec.say(page, "That fee is the depositors' <b>yield</b>, and every sat of it is a transfer on Tachi. What the vault owes matches what it holds on chain.");
 
     // Graph, inspector, discovery, marketplace
     await scrollToEl(page, page.getByRole("img", { name: "Payments between agents" }), 40);
@@ -115,7 +132,7 @@ async function main() {
     await rec.say(page, "To fund a treasury, send bitcoin to its address and paste the transaction ID. The page deposits it to Tachi.", () =>
       page.getByText(/Add funds from Bitcoin/).click(),
     );
-    await rec.card(page, `<h1>Agents that pay agents.</h1><p><i></i>Nostr identity and discovery, x402 payments, private data delivery, bitcoin settlement on Tachi.</p><p style="margin-top:36px"><code>npm install · npm run build · npm run server</code></p>`);
+    await rec.card(page, `<h1>Agents that pay agents.</h1><p><i></i>Nostr identity and discovery, x402 payments, private data delivery, a yield vault, bitcoin settlement on Tachi.</p><p style="margin-top:36px"><code>npm install · npm run build · npm run server</code></p>`);
     await rec.say(page, "To run it yourself: npm install, npm run build, npm run server, then open localhost port 4402.");
     await wait(1200);
     await rec.close();
