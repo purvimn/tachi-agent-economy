@@ -87,6 +87,10 @@ Each button shows its steps as they run, then a one-line result.
    withdraws part of it, both on chain. Then ResearchBot borrows from the vault, buys data with the
    loan, earns by selling inference over x402, and repays with a fee: the vault's share price rises
    by exactly that fee. Each step links to its transaction.
+   Also run on Tachi signet: [deposit](https://signet.tachibtcscan.com/tx/b41073c40ffc849732e7ad95e470c515d56742060077520fe1adad644a63d9ea),
+   [withdrawal](https://signet.tachibtcscan.com/tx/9afa337a9a64729f2ecf5e8f7f8b67dabedc2e399fb86bc7ed98bcf31b2a485e),
+   [loan](https://signet.tachibtcscan.com/tx/d7c207b1b0a9e3acde6c1294a7fd67bf5c0fa988477c749487adaca30c247ef5),
+   [repayment](https://signet.tachibtcscan.com/tx/85421d09a5ad11c8ef9fea43d9be91a01b0c956b5fb58b26822422e4dc5a8f09).
 7. **Anchor the log on Tachi.** The event log's hash is written into a Tachi transaction; the
    *Signed events* section then shows whether the log still matches.
 8. **Inspect.** Select an agent in *Agents*; see *On Nostr* for offers read from the relays.
