@@ -13,4 +13,5 @@ export { logChainRoot, anchorKey } from "./auditChain.js";
 export { tachiNetwork, type TachiNetwork, type TachiNetworkName } from "./network.js";
 export { p2trAddress, depositFromL1 } from "./payment/funding.js";
 export * as tachiTx from "./payment/tachiTx.js";
-export { YieldVault, DEFAULT_STRATEGIES, type YieldStrategy, type Position } from "./yield.js";
+export { YieldVault, type Position } from "./yield.js";
+export { VaultBook, feeBpsFor, MAX_UTILIZATION, type VaultEntry, type Loan } from "./vaultBook.js";

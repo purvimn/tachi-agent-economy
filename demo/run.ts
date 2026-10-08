@@ -71,21 +71,6 @@ async function main() {
     const reputation = await (await fetch(`${BASE}/agents/${research.pubkey}/reputation`)).json();
     console.log("\nResearchBot reputation:", reputation);
 
-    console.log("\n--- Yield Agent ---");
-    const depositor = new AgentIdentity("YieldDepositor");
-    await register(depositor);
-    const dep = await await postJson("/yield/deposit", { pubkey: depositor.pubkey, amountSats: 500_000 });
-    console.log("Deposited 500,000 sats:", dep);
-
-    // First rebalance call just allocates a strategy (no elapsed time to accrue against yet).
-    await post("/yield/rebalance", { maxRiskScore: 40, elapsedSeconds: 0 });
-
-    const rebalance = await await postJson("/yield/rebalance", { maxRiskScore: 40, elapsedSeconds: 30 * 24 * 3600 });
-    console.log("Rebalanced (max risk 40, 30 days elapsed):", rebalance);
-
-    const balance = await (await fetch(`${BASE}/yield/balance/${depositor.pubkey}`)).json();
-    console.log("Balance after accrual:", balance);
-
     console.log("\n--- Data Marketplace ---");
     const dataSeller = new AgentIdentity("DatasetSeller");
     const dataBuyer = new AgentIdentity("DatasetBuyer");
@@ -157,7 +142,6 @@ async function main() {
     if (replay.status !== 402) throw new Error(`x402 proof was replayable across resources (got ${replay.status})`);
     if (history.length < 4) throw new Error(`expected >=4 logged events, got ${history.length}`);
     if (reputation.completedJobs !== 2) throw new Error(`expected 2 completed jobs, got ${reputation.completedJobs}`);
-    if (balance.balanceSats <= 500_000) throw new Error("expected yield accrual to increase balance");
     if (opened !== datasetContent) throw new Error("opened dataset content did not match original");
     if (JSON.stringify(purchase).includes("timestamp,open")) throw new Error("dataset plaintext leaked in the delivery");
     if (purchase.contentHash !== listing.contentHash) throw new Error("dataset content hash mismatch");

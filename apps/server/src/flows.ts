@@ -26,7 +26,7 @@ export function client(base: string) {
   return { post, publish };
 }
 
-/** Registers demo agents and runs simulated x402 purchases, a vault deposit, and marketplace listings. */
+/** Registers demo agents and runs simulated x402 purchases and marketplace listings. */
 export async function seedDemo(base: string, onStep: Step = () => {}) {
   const { post, publish } = client(base);
 
@@ -46,20 +46,14 @@ export async function seedDemo(base: string, onStep: Step = () => {}) {
   const research = new AgentIdentity("ResearchBot");
   const dataAgent = new AgentIdentity("BTCDataAgent");
   const inferAgent = new AgentIdentity("InferenceAgent");
-  const depositor = new AgentIdentity("YieldDepositor");
   const shop = new AgentIdentity("CoffeeShop");
 
-  onStep("Registering five agents");
-  await Promise.all([research, dataAgent, inferAgent, depositor, shop].map((a) => post("/agents/register", { pubkey: a.pubkey, name: a.name })));
+  onStep("Registering four agents");
+  await Promise.all([research, dataAgent, inferAgent, shop].map((a) => post("/agents/register", { pubkey: a.pubkey, name: a.name })));
 
   onStep("ResearchBot is buying BTC data and inference");
   await paidCall(research, dataAgent, `/services/btc-data/${dataAgent.pubkey}`);
   await paidCall(research, inferAgent, `/services/inference/${inferAgent.pubkey}`);
-
-  onStep("YieldDepositor is depositing into the vault");
-  await post("/yield/deposit", { pubkey: depositor.pubkey, amountSats: 500_000 });
-  await post("/yield/rebalance", { maxRiskScore: 40, elapsedSeconds: 0 });
-  await post("/yield/rebalance", { maxRiskScore: 40, elapsedSeconds: 30 * 24 * 3600 });
 
   onStep("Listing a dataset and a product");
   await post("/datasets", {
@@ -296,4 +290,136 @@ export async function anchorLog(base: string, net: TachiNetwork, secretKeyHex: s
   const r = await post("/audit/anchors", { root, count, txRef: paid.txRef });
   if (!r.ok) throw new Error((await r.json()).error);
   return { root, count, txRef: paid.txRef, explorerUrl: `${net.explorerUrl}/tx/${paid.txRef}` };
+}
+
+/**
+ * Real vault round trip: TreasuryBot deposits sats with a Tachi transfer to the vault key (shares are
+ * minted only after the server verifies it on chain), then withdraws part of it with a signed Nostr
+ * request and gets paid back on chain. Replaying the request and a stranger withdrawing both fail.
+ */
+export async function vaultRoundTrip(base: string, net: TachiNetwork, secretKeyHex: string, onStep: Step = () => {}) {
+  const { post, publish } = client(base);
+  const { buyer, wallet } = await realAgents(base, net, secretKeyHex);
+  const summary = await (await fetch(`${base}/vault/summary`)).json();
+  if (!summary.configured) throw new Error("The vault has no key; create a treasury first");
+  const deposit = 5_000;
+  const withdraw = 2_000;
+
+  onStep(`TreasuryBot sends ${deposit} sats to the vault key on Tachi`);
+  const paid = await wallet.pay({ toPubkey: summary.vaultPubkey, amountSats: deposit, resource: "vault-deposit" });
+  onStep("The server verifies the transfer on chain and mints shares");
+  const d = await post("/vault/deposit", { txRef: paid.txRef, payer: buyer.pubkey });
+  if (!d.ok) throw new Error((await d.json()).error);
+  await publish(buyer, "payment_sent", { toPubkey: summary.vaultPubkey, amountSats: deposit, txRef: paid.txRef });
+
+  const request = (who: AgentIdentity, amountSats: number) =>
+    who.sign({ kind: 1, content: JSON.stringify({ action: "vault-withdraw", vault: summary.vaultPubkey, amountSats }), tags: [], created_at: Math.floor(Date.now() / 1000) });
+  onStep(`TreasuryBot signs a request to withdraw ${withdraw} sats`);
+  const signed = request(buyer, withdraw);
+  const w = await post("/vault/withdraw", { event: signed });
+  const out = await w.json();
+  if (!w.ok) throw new Error(out.error);
+  await publish(buyer, "payment_received", { fromPubkey: summary.vaultPubkey, amountSats: out.paidSats, txRef: out.txRef });
+
+  onStep("Checking that a replayed request and a stranger's withdrawal are refused");
+  const replay = await post("/vault/withdraw", { event: signed });
+  const theft = await post("/vault/withdraw", { event: request(new AgentIdentity("Stranger"), withdraw) });
+
+  const after = await (await fetch(`${base}/vault/summary`)).json();
+  return {
+    depositTxRef: paid.txRef,
+    depositUrl: `${net.explorerUrl}/tx/${paid.txRef}`,
+    withdrawTxRef: out.txRef,
+    explorerUrl: `${net.explorerUrl}/tx/${out.txRef}`,
+    deposited: deposit,
+    withdrawn: withdraw,
+    paidSats: out.paidSats,
+    balanceSats: out.balanceSats,
+    replayRejected: replay.status === 409,
+    theftRejected: theft.status === 400,
+    owedSats: after.owedSats,
+    reservesSats: after.reservesSats,
+  };
+}
+
+/**
+ * Where the vault's yield comes from. TreasuryBot, a depositor, vouches for ResearchBot (its shares
+ * cover a default first). ResearchBot borrows working capital (fee priced by its reputation), spends
+ * it on BTC data over x402, earns by selling inference to TreasuryBot over x402, and repays principal + fee. The fee raises the vault's share price: yield depositors earned
+ * from real agent revenue, every sat of it a committed Tachi transfer.
+ */
+export async function vaultLoan(base: string, net: TachiNetwork, secretKeyHex: string, onStep: Step = () => {}) {
+  const { post, publish } = client(base);
+  const { buyer: treasury, seller: vendor, wallet: treasuryWallet } = await realAgents(base, net, secretKeyHex);
+  const research = new AgentIdentity("ResearchBot", createHash("sha256").update(`borrower:${secretKeyHex}`).digest());
+  const researchWallet = new TachiPaymentProvider(research.secretKeyBytes(), net.daemonUrl, net.name, net.apiKey);
+  await post("/agents/register", { pubkey: research.pubkey, name: research.name });
+  const summary = async () => (await fetch(`${base}/vault/summary`)).json();
+  const ok = async (r: Response) => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error);
+    return body;
+  };
+
+  let vault = await summary();
+  if (!vault.configured) throw new Error("The vault has no key; create a treasury first");
+  const borrow = 2_000;
+  const balanceOf = async (pubkey: string) => (await (await fetch(`${base}/vault/balance/${pubkey}`)).json()).balanceSats as number;
+  if (vault.owedSats * vault.maxUtilization - vault.outstandingSats < borrow + 10 || (await balanceOf(treasury.pubkey)) < borrow + 10) {
+    onStep("TreasuryBot deposits 5,000 sats into the vault so it can lend and vouch");
+    const paid = await treasuryWallet.pay({ toPubkey: vault.vaultPubkey, amountSats: 5_000, resource: "vault-deposit" });
+    await ok(await post("/vault/deposit", { txRef: paid.txRef, payer: treasury.pubkey }));
+    vault = await summary();
+  }
+  const priceBefore = vault.sharePrice;
+  const depositorBefore = await balanceOf(treasury.pubkey);
+  const sign = (a: AgentIdentity, content: unknown) => a.sign({ kind: 1, content: JSON.stringify(content), tags: [], created_at: Math.floor(Date.now() / 1000) });
+
+  onStep("An agent no depositor vouched for asks to borrow: the vault refuses");
+  const unbacked = await post("/vault/borrow", { event: sign(new AgentIdentity("FreshKey"), { action: "vault-borrow", vault: vault.vaultPubkey, amountSats: borrow }) });
+  onStep("TreasuryBot vouches for ResearchBot up to 2,500 sats; its own shares cover a default first");
+  const terms = await ok(await post("/vault/vouch", { event: sign(treasury, { action: "vault-vouch", vault: vault.vaultPubkey, borrower: research.pubkey, amountSats: 2_500 }) }));
+  onStep(`ResearchBot's reputation score ${terms.score} prices the loan at ${(terms.feeBps / 100).toFixed(2)}% per ${terms.termSeconds / 3600}h`);
+  onStep(`ResearchBot signs a request to borrow ${borrow} sats; the vault pays it on Tachi`);
+  const loan = await ok(await post("/vault/borrow", { event: sign(research, { action: "vault-borrow", vault: vault.vaultPubkey, amountSats: borrow }) }));
+  await publish(research, "payment_received", { fromPubkey: vault.vaultPubkey, amountSats: borrow, txRef: loan.txRef });
+
+  onStep("ResearchBot spends the loan: buys BTC data from DataVendor over x402");
+  const spend = await x402Fetch(`${base}/services/btc-data/${vendor.pubkey}`, {}, { wallet: researchWallet, budget: new Budget(borrow, 500), onStep });
+  if (!spend.response.ok || !spend.payment) throw new Error(`ResearchBot's data purchase failed (${spend.response.status})`);
+  await publish(research, "payment_sent", { toPubkey: vendor.pubkey, amountSats: spend.payment.amountSats, txRef: spend.payment.txRef });
+  await publish(research, "job_completed", { service: spend.payment.requirements.resource });
+
+  onStep("ResearchBot earns: TreasuryBot buys its inference over x402");
+  const sale = await x402Fetch(`${base}/services/inference/${research.pubkey}`, {}, { wallet: treasuryWallet, budget: new Budget(1_000, 500), onStep });
+  if (!sale.response.ok || !sale.payment) throw new Error(`The inference sale failed (${sale.response.status})`);
+  await publish(treasury, "payment_sent", { toPubkey: research.pubkey, amountSats: sale.payment.amountSats, txRef: sale.payment.txRef });
+  await publish(research, "payment_received", { fromPubkey: treasury.pubkey, amountSats: sale.payment.amountSats, txRef: sale.payment.txRef });
+
+  onStep(`ResearchBot repays ${loan.repaySats} sats (principal ${loan.principalSats} + fee ${loan.feeSats}) out of its revenue`);
+  const repaid = await researchWallet.pay({ toPubkey: vault.vaultPubkey, amountSats: loan.repaySats, resource: "vault-repay" });
+  const closed = await ok(await post("/vault/repay", { txRef: repaid.txRef, payer: research.pubkey }));
+  await publish(research, "payment_sent", { toPubkey: vault.vaultPubkey, amountSats: loan.repaySats, txRef: repaid.txRef });
+
+  const after = await summary();
+  const depositorAfter = await balanceOf(treasury.pubkey);
+  onStep(`Loan closed. Share price ${priceBefore.toFixed(6)} → ${after.sharePrice.toFixed(6)}`);
+  return {
+    terms,
+    unbackedRejected: unbacked.status === 403,
+    loanUrl: `${net.explorerUrl}/tx/${loan.txRef}`,
+    spendUrl: `${net.explorerUrl}/tx/${spend.payment.txRef}`,
+    saleUrl: `${net.explorerUrl}/tx/${sale.payment.txRef}`,
+    explorerUrl: `${net.explorerUrl}/tx/${repaid.txRef}`,
+    borrowed: borrow,
+    feeSats: loan.feeSats,
+    closed: closed.closed,
+    sharePriceBefore: priceBefore,
+    sharePriceAfter: after.sharePrice,
+    depositorBefore,
+    depositorAfter,
+    owedSats: after.owedSats,
+    reservesSats: after.reservesSats,
+    outstandingSats: after.outstandingSats,
+  };
 }

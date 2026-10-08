@@ -1,13 +1,12 @@
-import { EventLog, AgentDirectory, SimulatedPaymentProvider, YieldVault, DEFAULT_STRATEGIES, Budget, type PaymentResult } from "@tachi-hack/agent-sdk";
+import { EventLog, AgentDirectory, SimulatedPaymentProvider, Budget, type PaymentResult } from "@tachi-hack/agent-sdk";
 
 /**
- * Shared server-side state: the signed event log, agent directory, payment ledger, and yield
- * vault. A real deployment would split this across services; one process is enough for a demo.
+ * Shared server-side state: the signed event log, agent directory, and payment ledger. A real
+ * deployment would split this across services; one process is enough for a demo.
  */
 export const eventLog = new EventLog();
 export const directory = new AgentDirectory(eventLog);
 export const paymentProvider = new SimulatedPaymentProvider();
-export const yieldVault = new YieldVault(DEFAULT_STRATEGIES);
 
 /** txRef -> settled payment, used by x402 middleware to verify a client's payment proof. */
 export const settledPayments = new Map<string, PaymentResult>();

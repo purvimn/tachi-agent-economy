@@ -17,11 +17,24 @@ interface LoggedEvent {
   content: string;
   createdAt: number;
 }
-interface YieldSummary {
-  totalAssetsSats: number;
+interface VaultSummary {
+  configured: boolean;
+  vaultPubkey: string;
+  explorerUrl: string;
+  owedSats: number;
+  reservesSats: number | null;
+  outstandingSats: number;
+  utilization: number;
+  maxUtilization: number;
+  sharePrice: number;
   depositorCount: number;
-  allocatedStrategy: { name: string; aprBps: number; riskScore: number } | null;
+  realizedYieldSats: number;
+  writtenOffSats: number;
+  sponsorCoveredSats: number;
+  loans: { pubkey: string; sponsor: string; principal: number; feeSats: number; repaid: number; dueAt: number }[];
+  ledger: { type: keyof typeof LEDGER_LABEL; pubkey: string; amountSats: number; txRef?: string; at: number }[];
 }
+const LEDGER_LABEL = { deposit: "Deposit", withdraw: "Withdrawal", vouch: "Vouch", borrow: "Loan", repay: "Repayment", default: "Written off" } as const;
 interface Listing {
   id: string;
   title: string;
@@ -328,7 +341,7 @@ interface Treasury {
   explorerUrl: string;
   l1ExplorerUrl: string | null;
 }
-type Action = "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "fund";
+type Action = "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "vault" | "loan" | "fund";
 interface Job {
   action: Action;
   status: "running" | "done" | "failed";
@@ -390,6 +403,48 @@ function JobResult({ job }: { job: Job }) {
               </span>
             ))}
           </span>
+        </>
+      );
+    case "vault":
+      return (
+        <>
+          Deposited {fmt(r.deposited)} sats into the vault and withdrew {fmt(r.withdrawn)}, both on chain.{" "}
+          <span className="font-normal text-ink-2">
+            {r.replayRejected && r.theftRejected ? "A replayed withdrawal and a stranger's withdrawal were both refused. " : ""}
+            Reserves {fmt(r.reservesSats)} sats against {fmt(r.owedSats)} owed.{" "}
+          </span>
+          <a href={r.depositUrl} target="_blank" rel="noreferrer" className="font-normal text-ink">
+            Deposit
+          </a>{" "}
+          ·{" "}
+          <a href={r.explorerUrl} target="_blank" rel="noreferrer" className="font-normal text-ink">
+            Withdrawal
+          </a>
+        </>
+      );
+    case "loan":
+      return (
+        <>
+          ResearchBot borrowed {fmt(r.borrowed)} sats, earned over x402 and repaid with a {fmt(r.feeSats)}-sat fee.{" "}
+          <span className="font-normal text-ink-2">
+            {r.unbackedRejected ? "An agent no depositor vouched for was refused. " : ""}TreasuryBot vouched for it; reputation {r.terms?.score} priced it at{" "}
+            {(r.terms?.feeBps / 100).toFixed(2)}%. The depositor's balance went from {fmt(r.depositorBefore)} to {fmt(r.depositorAfter)} sats.{" "}
+          </span>
+          {(
+            [
+              [r.loanUrl, "Loan"],
+              [r.spendUrl, "Spend"],
+              [r.saleUrl, "Revenue"],
+              [r.explorerUrl, "Repayment"],
+            ] as const
+          ).map(([href, label], i) => (
+            <span key={label}>
+              {i > 0 && " · "}
+              <a href={href} target="_blank" rel="noreferrer" className="font-normal text-ink">
+                {label}
+              </a>
+            </span>
+          ))}
         </>
       );
     case "anchor":
@@ -473,6 +528,8 @@ function RunPanel({ onChange }: { onChange: () => void }) {
               ["/demo/nostr", "Find a seller on Nostr", false],
               ["/demo/dataset", "Buy a dataset", true],
               ["/demo/burst", "Run 25 paid requests", true],
+              ["/demo/vault", "Deposit and withdraw", true],
+              ["/demo/loan", "Lend to an agent", true],
               ["/demo/anchor", "Anchor the log on Tachi", true],
               ["/demo/seed", "Add demo agents", false],
             ] as const
@@ -587,7 +644,7 @@ function RunPanel({ onChange }: { onChange: () => void }) {
 export default function App() {
   const [agents, setAgents] = useState<AgentEntry[]>([]);
   const [events, setEvents] = useState<LoggedEvent[]>([]);
-  const [vault, setVault] = useState<YieldSummary | null>(null);
+  const [realVault, setRealVault] = useState<VaultSummary | null>(null);
   const [datasets, setDatasets] = useState<Listing[]>([]);
   const [products, setProducts] = useState<Listing[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -601,10 +658,9 @@ export default function App() {
 
   async function refresh() {
     try {
-      const [a, e, y, d, p, pay] = await Promise.all(["/agents", "/events", "/yield/summary", "/datasets", "/products", "/payments"].map(getJson));
+      const [a, e, d, p, pay] = await Promise.all(["/agents", "/events", "/datasets", "/products", "/payments"].map(getJson));
       setAgents(a);
       setEvents(e.slice().reverse());
-      setVault(y);
       setDatasets(d);
       setProducts(p);
       setPayments(pay);
@@ -617,6 +673,7 @@ export default function App() {
     getJson("/daemon/vtxos").then(setVtxos, () => setVtxos((v) => (v && v !== "error" ? v : "error")));
     getJson("/nostr/services").then(setOffers, () => {});
     getJson("/audit/anchors").then(setAnchors, () => {});
+    getJson("/vault/summary").then(setRealVault, () => {});
   }
 
   useEffect(() => {
@@ -794,23 +851,67 @@ export default function App() {
           )}
         </Section>
 
-        <Section title="Yield vault" aside="Agents pool idle sats and the vault picks the best strategy under a risk cap.">
-          {vault ? (
-            <p className="max-w-[56ch] text-2xl leading-snug font-medium">
-              {fmt(vault.totalAssetsSats)} sats from {vault.depositorCount} depositor{vault.depositorCount === 1 ? "" : "s"}
-              {vault.allocatedStrategy ? (
-                <>
-                  , allocated to {vault.allocatedStrategy.name} at {(vault.allocatedStrategy.aprBps / 100).toFixed(2)}% APR with a risk score of{" "}
-                  {vault.allocatedStrategy.riskScore}.
-                </>
-              ) : (
-                <>, not yet allocated to a strategy.</>
+        <Section title="Yield vault" aside="Depositors lend to agents through the vault. Every deposit, loan, repayment and withdrawal is a Tachi transfer; reserves are read from the chain.">
+          {realVault?.configured ? (
+            <div>
+              <p className="max-w-[60ch] text-2xl leading-snug font-medium">
+                {fmt(realVault.owedSats)} sats owed to {realVault.depositorCount} depositor{realVault.depositorCount === 1 ? "" : "s"}:{" "}
+                {realVault.reservesSats == null ? "reserves unavailable" : `${fmt(realVault.reservesSats)} on chain`}
+                {realVault.outstandingSats > 0 && ` + ${fmt(realVault.outstandingSats)} lent to agents`}.
+              </p>
+              <dl className="mt-3 grid max-w-[60ch] grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+                {(
+                  [
+                    ["Yield earned", `${fmt(realVault.realizedYieldSats)} sats`],
+                    ["Share price", realVault.sharePrice.toFixed(6)],
+                    ["Utilization", `${(realVault.utilization * 100).toFixed(0)}% of ${realVault.maxUtilization * 100}% max`],
+                    ["Written off", `${fmt(realVault.writtenOffSats)} sats (${fmt(realVault.sponsorCoveredSats)} by sponsors)`],
+                  ] as const
+                ).map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="text-ink-2">{k}</dt>
+                    <dd className="font-medium">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-3 max-w-[60ch] text-sm text-ink-2">
+                Yield source: fees agents pay to borrow working capital, priced by their reputation. Only agents a depositor vouches for can
+                borrow. Risk: a loan not repaid within its term is written off, from the sponsor's shares first, then shared by all
+                depositors. Vault key <span className="font-mono text-[12px]">{short(realVault.vaultPubkey, 12)}</span>.
+              </p>
+              {realVault.loans.length > 0 && (
+                <ul className="mt-3 space-y-1 text-sm">
+                  {realVault.loans.map((l) => (
+                    <li key={l.pubkey}>
+                      Open loan to <span className="font-mono text-[12px]">{short(l.pubkey, 8)}</span>, vouched for by{" "}
+                      <span className="font-mono text-[12px]">{short(l.sponsor, 8)}</span>: {fmt(l.principal + l.feeSats - l.repaid)} sats due by{" "}
+                      {new Date(l.dueAt * 1000).toLocaleTimeString()}
+                    </li>
+                  ))}
+                </ul>
               )}
-            </p>
+              {realVault.ledger.length > 0 && (
+                <ul className="mt-3 space-y-1 text-sm">
+                  {realVault.ledger.slice(0, 12).map((l, i) => (
+                    <li key={l.txRef ?? `${l.type}-${i}`}>
+                      {LEDGER_LABEL[l.type]} of {fmt(l.amountSats)} sats, <span className="font-mono text-[12px]">{short(l.pubkey, 8)}</span>
+                      {l.txRef && (
+                        <>
+                          {" · "}
+                          <a href={`${realVault.explorerUrl}/tx/${l.txRef}`} target="_blank" rel="noreferrer">
+                            view
+                          </a>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           ) : (
-            <p className="text-ink-2">Loading the vault…</p>
+            <p className="text-ink-2">Create a treasury to open the vault.</p>
           )}
-        </Section>
+</Section>
 
         <Section title="For sale" aside="Datasets are delivered sealed to the buyer's Nostr key; only buyers who paid can rate them.">
           <div className="grid gap-10 xl:grid-cols-2">

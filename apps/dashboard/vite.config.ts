@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      "^/(agents|events|services|yield|pay|payments|health|config|datasets|products|daemon|nostr|audit|demo)(/|$)": "http://localhost:4402",
+      "^/(agents|events|services|yield|vault|pay|payments|health|config|datasets|products|daemon|nostr|audit|demo)(/|$)": "http://localhost:4402",
     },
   },
 });

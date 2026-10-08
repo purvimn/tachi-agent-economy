@@ -32,7 +32,7 @@ function requirements(resource: string, priceSats: number, payTo: string): Payme
 }
 
 /** Looks the transfer up on Tachi: committed, signed by the payer, paying `payTo` at least `priceSats`. */
-async function verifyOnChain(p: PaymentPayload["payload"], payTo: string, priceSats: number): Promise<PaymentResult> {
+export async function verifyOnChain(p: PaymentPayload["payload"], payTo: string, priceSats: number): Promise<PaymentResult> {
   const tx = await tachi.getTransaction(p.txRef);
   if (tx.state !== "committed") throw new Error(`the transaction is ${tx.state}, not committed`);
   if (tx.type !== "transfer") throw new Error(`the transaction is a ${tx.type}, not a transfer`);

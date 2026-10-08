@@ -11,3 +11,6 @@ dist/
 
 .DS_Store
 *.tsbuildinfo
+
+# vault ledgers (real funds, per network)
+data/

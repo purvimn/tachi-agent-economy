@@ -26,8 +26,12 @@ validators commit. Built for the OP_Freedom hackathon, AI track.
 | | Identity / action inspection UI | Select any agent: npub, relay publications, payments, every event with its signature re-verified |
 | | Reputation | Computed from signed events and ratings received, never stored |
 | | BTC payments for agent actions | All of the above settle on Tachi |
+| **#3 Yield Primitives** | BTC-native deposit / withdraw | A deposit is a Tachi transfer to the vault key, verified on chain before shares are minted; a withdrawal is a Nostr request signed by the depositor, paid out by the vault on Tachi |
+| | Yield strategy / vault logic | The vault lends depositors' sats to agents as working capital; terms (limit, fee) come from the agent's reputation; at most 80% is lent, the rest stays liquid for withdrawals |
+| | Transparent yield source and risk | Yield is the loan fee agents pay from their x402 revenue, and every sat of it is a committed transfer. Loans not repaid within their term are written off and depositors share the loss. A public ledger with a txRef on every line, replayable to the same books (`VaultBook`) |
+| | Dashboard | Owed vs. reserves on chain + loans outstanding, yield earned, share price, utilization, write-offs, open loans, ledger |
 
-Also included: a simulated yield vault and an agent spending budget.
+Also included: an agent spending budget.
 
 ---
 
@@ -69,7 +73,7 @@ Open **<http://localhost:4402>**. Everything from here is done on the page.
 
 Each button shows its steps as they run, then a one-line result.
 
-1. **Add demo agents.** Five agents trade over x402 in simulation (dashed grey lines).
+1. **Add demo agents.** Four agents trade over x402 in simulation (dashed grey lines).
 2. **Find a seller on Nostr.** DataVendor publishes its profile and an offer to three public relays;
    TreasuryBot discovers it there and they exchange NIP-17 encrypted messages.
 3. **Make a real payment.** TreasuryBot gets an x402 `402`, pays 50 sats with a Tachi transfer it
@@ -79,10 +83,14 @@ Each button shows its steps as they run, then a one-line result.
 4. **Buy a dataset.** A real 300-sat purchase; the data arrives sealed to TreasuryBot's key, is
    opened and hash-checked, then rated.
 5. **Run 25 paid requests.** 25 payments in parallel, with the measured rate and cost.
-6. **Anchor the log on Tachi.** The event log's hash is written into a Tachi transaction; the
+6. **Deposit and withdraw**, then **Lend to an agent.** TreasuryBot deposits into the vault and
+   withdraws part of it, both on chain. Then ResearchBot borrows from the vault, buys data with the
+   loan, earns by selling inference over x402, and repays with a fee: the vault's share price rises
+   by exactly that fee. Each step links to its transaction.
+7. **Anchor the log on Tachi.** The event log's hash is written into a Tachi transaction; the
    *Signed events* section then shows whether the log still matches.
-7. **Inspect.** Select an agent in *Agents*; see *On Nostr* for offers read from the relays.
-8. **Optional: Add funds.** Open *Add funds*, send BTC to the shown address, paste the
+8. **Inspect.** Select an agent in *Agents*; see *On Nostr* for offers read from the relays.
+9. **Optional: Add funds.** Open *Add funds*, send BTC to the shown address, paste the
    transaction ID, press *Deposit*. On signet, follow it on
    [mempool.space/signet](https://mempool.space/signet).
 
@@ -195,7 +203,8 @@ packages/agent-sdk/            reusable core
   reputation.ts                reputation computed from the log
   directory.ts                 agent and service registry
   budget.ts                    per-agent spending caps
-  yield.ts                     YieldVault and strategies
+  yield.ts                     YieldVault: ERC4626-style share accounting
+  vaultBook.ts                 the vault's books: ledger replay, loans, yield, write-offs, credit terms
   network.ts                   regtest/signet settings from env
   x402.ts                      x402 messages, payer-signed claims, x402Fetch()
   delivery.ts                  NIP-44 sealed delivery to a buyer's key
@@ -210,7 +219,7 @@ packages/agent-sdk/            reusable core
 apps/server/                   Express API, serves the dashboard
   x402.ts                      requirePayment: x402 challenge, claim + on-chain verification
   flows.ts                     the demo flows (buttons and CLI)
-  routes/                      agents, pay, services, yield, datasets, merchants, daemon, demo,
+  routes/                      agents, pay, services, vault, datasets, merchants, daemon, demo,
                                nostr (discovery, inspector), audit (anchors)
 
 apps/dashboard/                React + Vite + Tailwind
@@ -230,7 +239,9 @@ docs/                          preview + walkthrough videos, subtitles, screensh
 | `POST` | `/pay` | simulated settlement (real payments go straight to `X-PAYMENT`) |
 | `GET` | `/payments` | payment history with explorer links |
 | `GET` | `/services/{btc-data,search,inference}/:pubkey` | x402-gated services |
-| `POST`/`GET` | `/yield/*` | vault deposit, withdraw, rebalance, summary, balance |
+| `POST` | `/vault/deposit`, `/vault/repay` | credit a verified Tachi transfer to the vault key |
+| `POST` | `/vault/withdraw`, `/vault/borrow` | signed Nostr request; the vault pays out on Tachi |
+| `GET` | `/vault/summary`, `/vault/terms/:pubkey`, `/vault/balance/:pubkey` | books, reserves, risk, ledger; an agent's credit terms |
 | `POST`/`GET` | `/datasets`, `/datasets/:id/purchase` | list datasets; buy (x402, sealed delivery) |
 | `POST` | `/datasets/:id/ratings` | a buyer's signed rating |
 | `GET` | `/agents/:pubkey/inspect` | identity, publications, payments, events with signatures re-checked |
@@ -258,7 +269,11 @@ docs/                          preview + walkthrough videos, subtitles, screensh
   VTXOs share blocks, which is how a burst reaches several per second.
 - **Sealed deliveries are one NIP-44 payload** (up to 64 KB); larger datasets need chunking.
 - **Each anchor costs 1 sat + fee**; the 1-sat output is a commitment, not meant to be spent.
-- **The yield vault is simulated** (no on-chain strategies).
+- **The vault key is held by the server** (derived from the treasury key), so the vault is not yet
+  self-custodial; a TAURUS vault or timelocked exit is the upgrade. The ledger is saved per network
+  in `data/vault-<network>.json` and replayed on start.
+- **One yield source:** loans to agents. Rebalancing is the utilization cap between lending and
+  liquid reserves, not yet across other Tachi DeFi primitives.
 - **Reputation is a simple weighted score** (`jobs × 2 + rating × 15`), not a fraud-resistant model.
 - **Small amounts read as 0.0000 BTC on the explorer**, which shows four decimals; the exact sats
   are in the transaction's outputs and on the dashboard.

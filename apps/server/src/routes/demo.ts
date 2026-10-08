@@ -5,7 +5,7 @@ import { Router } from "express";
 import { schnorr } from "@noble/curves/secp256k1.js";
 import { TachiPaymentProvider, p2trAddress, depositFromL1, tachiTx } from "@tachi-hack/agent-sdk";
 import { network } from "./daemon.js";
-import { seedDemo, payOnChain, payBurst, buyDataset, findSellerOnNostr, anchorLog } from "../flows.js";
+import { seedDemo, payOnChain, payBurst, buyDataset, findSellerOnNostr, anchorLog, vaultRoundTrip, vaultLoan } from "../flows.js";
 
 /**
  * Dashboard controls: run the demo flows and fund the treasury without the CLI.
@@ -18,7 +18,7 @@ const ENV_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const self = () => `http://localhost:${process.env.PORT ?? 4402}`;
 
 interface Job {
-  action: "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "fund";
+  action: "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "vault" | "loan" | "fund";
   status: "running" | "done" | "failed";
   steps: string[];
   error?: string;
@@ -82,6 +82,8 @@ const treasuryActions = {
   dataset: buyDataset,
   nostr: findSellerOnNostr,
   anchor: anchorLog,
+  vault: vaultRoundTrip,
+  loan: vaultLoan,
 } as const;
 for (const [action, flow] of Object.entries(treasuryActions)) {
   demoRouter.post(`/demo/${action}`, (_req, res) => {

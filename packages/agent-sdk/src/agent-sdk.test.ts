@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { AgentIdentity } from "./identity.js";
 import { EventLog } from "./eventLog.js";
 import { computeReputation } from "./reputation.js";
-import { YieldVault, DEFAULT_STRATEGIES } from "./yield.js";
 import { Budget } from "./budget.js";
+import { VaultBook, feeBpsFor } from "./vaultBook.js";
+import { YieldVault } from "./yield.js";
 
 test("AgentIdentity signs events that verify, and tampering breaks verification", () => {
   const agent = new AgentIdentity("Tester");
@@ -40,24 +41,8 @@ test("reputation is derived from the signed event log", () => {
   assert.equal(rep.score, 2 * 2 + 3 * 15); // 2 jobs + default rating (3) * 15
 });
 
-test("YieldVault: deposits mint shares 1:1 until yield accrues, then balance grows", () => {
-  const vault = new YieldVault(DEFAULT_STRATEGIES);
-  const shares = vault.deposit("alice", 500_000);
-  assert.equal(shares, 500_000);
-  assert.equal(vault.balanceOf("alice"), 500_000);
-
-  vault.rebalance(40, 0); // allocate a strategy, no time elapsed
-  const { accruedSats } = vault.rebalance(40, 365 * 24 * 3600); // one full year
-  assert.ok(accruedSats > 0, "a year of the 6.70% strategy should accrue yield");
-  assert.ok(vault.balanceOf("alice") > 500_000, "alice's balance reflects accrued yield via share price");
-});
-
-test("YieldVault: strategy selection respects the risk cap; overdraw is rejected", () => {
-  const vault = new YieldVault(DEFAULT_STRATEGIES);
-  assert.equal(vault.selectStrategy(40).id, "balanced-lp"); // highest APR within risk <= 40
-  assert.equal(vault.selectStrategy(100).id, "aggressive-yield");
-  assert.throws(() => vault.selectStrategy(10), /no strategy available/);
-
+test("YieldVault: overdraw is rejected", () => {
+  const vault = new YieldVault();
   vault.deposit("bob", 1000);
   assert.throws(() => vault.withdraw("bob", 5000), /insufficient shares/);
 });
@@ -140,4 +125,71 @@ test("anchorKey: a valid x-only key that commits to the root", async () => {
   assert.match(k, /^[0-9a-f]{64}$/);
   assert.doesNotThrow(() => schnorr.utils.lift_x(BigInt("0x" + k)), "on the curve");
   assert.notEqual(anchorKey(payer, "bb".repeat(32)), k, "a different root gives a different key");
+});
+
+test("VaultBook: a repaid loan's fee is depositors' yield; the ledger replays to the same books", () => {
+  const t = (n: number) => n.toString(16).padStart(64, "0");
+  const book = new VaultBook();
+  book.apply({ type: "deposit", pubkey: "alice", amountSats: 6_000, txRef: t(1), at: 1 });
+  book.apply({ type: "deposit", pubkey: "bob", amountSats: 4_000, txRef: t(2), at: 1 });
+  assert.throws(() => book.apply({ type: "deposit", pubkey: "bob", amountSats: 4_000, txRef: t(2), at: 1 }), /already credited/);
+
+  // Lending moves sats to a receivable: what depositors are owed doesn't change.
+  book.apply({ type: "vouch", pubkey: "alice", borrower: "agent", amountSats: 3_000, at: 2, requestId: "v1" });
+  book.apply({ type: "borrow", pubkey: "agent", sponsor: "alice", amountSats: 2_000, feeSats: 100, dueAt: 100, txRef: t(3), at: 2, requestId: "r1" });
+  assert.equal(book.owedSats(), 10_000);
+  assert.equal(book.outstandingSats(), 2_000);
+  assert.throws(() => book.checkUtilization(6_001), /utilization cap/); // 80% of 10,000 minus 2,000 out
+  book.checkUtilization(6_000);
+  // The sponsor's cover is locked while the loan is open.
+  assert.throws(() => book.apply({ type: "withdraw", pubkey: "alice", amountSats: 4_001, txRef: t(9), at: 2 }), /free/);
+
+  // Partial repayment keeps the loan open; the full amount closes it and the fee becomes yield.
+  book.apply({ type: "repay", pubkey: "agent", amountSats: 1_000, txRef: t(4), at: 3 });
+  assert.equal(book.realizedYieldSats, 0);
+  book.apply({ type: "repay", pubkey: "agent", amountSats: 1_100, txRef: t(5), at: 4 });
+  assert.equal(book.loans.size, 0);
+  assert.equal(book.realizedYieldSats, 100);
+  assert.equal(Math.round(book.vault.balanceOf("alice")), 6_060); // yield split pro rata by shares
+  assert.equal(Math.round(book.vault.balanceOf("bob")), 4_040);
+
+  // Withdrawing a whole balance works despite float share math; a request id pays once.
+  book.apply({ type: "withdraw", pubkey: "bob", amountSats: Math.floor(book.vault.balanceOf("bob")), txRef: t(8), at: 11, requestId: "r3" });
+  assert.throws(() => book.apply({ type: "withdraw", pubkey: "bob", amountSats: 1, txRef: t(10), at: 12, requestId: "r3" }), /already used/);
+  const replayed = new VaultBook(book.entries.map((e) => ({ ...e })));
+  assert.equal(replayed.owedSats(), book.owedSats());
+  assert.equal(replayed.vault.balanceOf("alice"), book.vault.balanceOf("alice"));
+  assert.equal(replayed.realizedYieldSats, 100);
+});
+
+test("VaultBook: fresh keys can't borrow; a default is taken from the sponsor's shares first", () => {
+  const t = (n: number) => n.toString(16).padStart(64, "0");
+  const book = new VaultBook();
+  book.apply({ type: "deposit", pubkey: "alice", amountSats: 6_000, txRef: t(1), at: 1 });
+  book.apply({ type: "deposit", pubkey: "bob", amountSats: 4_000, txRef: t(2), at: 1 });
+  const borrow = (pubkey: string, sponsor: string, amountSats: number, n: number) =>
+    book.apply({ type: "borrow", pubkey, sponsor, amountSats, feeSats: 10, dueAt: 10, txRef: t(n), at: 2 });
+
+  assert.throws(() => borrow("sybil", "alice", 100, 3), /No depositor has vouched/);
+  assert.throws(() => book.apply({ type: "vouch", pubkey: "sybil", borrower: "sybil2", amountSats: 100, at: 2 }), /Only a depositor/);
+  book.apply({ type: "vouch", pubkey: "bob", borrower: "agent", amountSats: 1_000, at: 2 });
+  assert.throws(() => borrow("agent", "alice", 500, 4), /No depositor has vouched/); // wrong sponsor named
+  assert.throws(() => borrow("agent", "bob", 1_001, 5), /up to 1000/);
+
+  // Bob vouched for 1,000; the agent borrows 1,000, repays 300, and defaults: bob loses 700, alice nothing.
+  borrow("agent", "bob", 1_000, 6);
+  book.apply({ type: "repay", pubkey: "agent", amountSats: 300, txRef: t(7), at: 3 });
+  assert.equal(book.sweepDefaults(9).length, 0);
+  assert.equal(book.sweepDefaults(10).length, 1);
+  assert.equal(book.writtenOffSats, 700);
+  assert.equal(book.sponsorCoveredSats, 700);
+  assert.equal(Math.round(book.vault.balanceOf("alice")), 6_000);
+  assert.equal(Math.round(book.vault.balanceOf("bob")), 3_300);
+  assert.equal(Math.round(book.owedSats()), 9_300);
+});
+
+test("feeBpsFor: better reputation, cheaper credit (but never more of it)", () => {
+  assert.equal(feeBpsFor(45), 210);
+  assert.equal(feeBpsFor(100), 100);
+  assert.equal(feeBpsFor(-5), 300);
 });

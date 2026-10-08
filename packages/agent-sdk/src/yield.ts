@@ -1,10 +1,3 @@
-export interface YieldStrategy {
-  id: string;
-  name: string;
-  aprBps: number; // annualized yield, basis points
-  riskScore: number; // 0-100
-}
-
 export interface Position {
   ownerPubkey: string;
   shares: number;
@@ -19,14 +12,7 @@ export class YieldVault {
   private totalShares = 0;
   private totalAssetsSats = 0;
   private positions = new Map<string, number>(); // pubkey -> shares
-  private strategies: YieldStrategy[];
-  private allocatedStrategyId: string | null = null;
-
-  constructor(strategies: YieldStrategy[]) {
-    this.strategies = strategies;
-  }
-
-  private sharePrice(): number {
+  sharePrice(): number {
     return this.totalShares === 0 ? 1 : this.totalAssetsSats / this.totalShares;
   }
 
@@ -40,9 +26,11 @@ export class YieldVault {
   }
 
   withdraw(pubkey: string, amountSats: number): void {
-    const shares = amountSats / this.sharePrice();
+    if (amountSats <= 0) throw new Error("amountSats must be positive");
     const owned = this.positions.get(pubkey) ?? 0;
-    if (shares > owned) throw new Error("insufficient shares");
+    // Float share math: withdrawing a whole balance can come out a hair above `owned`.
+    const shares = Math.min(amountSats / this.sharePrice(), owned);
+    if (amountSats > this.balanceOf(pubkey) + 1e-6) throw new Error("insufficient shares");
     this.positions.set(pubkey, owned - shares);
     this.totalShares -= shares;
     this.totalAssetsSats -= amountSats;
@@ -52,37 +40,17 @@ export class YieldVault {
     return (this.positions.get(pubkey) ?? 0) * this.sharePrice();
   }
 
-  summary(): { totalAssetsSats: number; totalShares: number; depositorCount: number; allocatedStrategy: YieldStrategy | null } {
+  summary(): { totalAssetsSats: number; totalShares: number; depositorCount: number } {
     return {
       totalAssetsSats: this.totalAssetsSats,
       totalShares: this.totalShares,
-      depositorCount: this.positions.size,
-      allocatedStrategy: this.strategies.find((s) => s.id === this.allocatedStrategyId) ?? null,
+      depositorCount: [...this.positions.values()].filter((s) => s > 1e-9).length,
     };
   }
 
-  /** Picks the highest-yield strategy whose risk score is within the caller's constraint. */
-  selectStrategy(maxRiskScore: number): YieldStrategy {
-    const eligible = this.strategies.filter((s) => s.riskScore <= maxRiskScore);
-    if (eligible.length === 0) throw new Error(`no strategy available within risk score ${maxRiskScore}`);
-    return eligible.reduce((best, s) => (s.aprBps > best.aprBps ? s : best));
-  }
-
-  /** Simulates one rebalance tick: accrue yield from the currently allocated strategy, then re-pick. */
-  rebalance(maxRiskScore: number, elapsedSeconds: number): { strategy: YieldStrategy; accruedSats: number } {
-    const strategy = this.selectStrategy(maxRiskScore);
-    const accruedSats =
-      this.allocatedStrategyId === null
-        ? 0
-        : this.totalAssetsSats * (strategy.aprBps / 10_000) * (elapsedSeconds / (365 * 24 * 3600));
-    this.totalAssetsSats += accruedSats;
-    this.allocatedStrategyId = strategy.id;
-    return { strategy, accruedSats };
+  /** Realized gain (fees earned) or loss (a write-off): moves every depositor's balance via the share price. */
+  realize(deltaSats: number): void {
+    if (this.totalShares === 0) throw new Error("no depositors to credit");
+    this.totalAssetsSats += deltaSats;
   }
 }
-
-export const DEFAULT_STRATEGIES: YieldStrategy[] = [
-  { id: "conservative-lend", name: "Conservative BTC Lending", aprBps: 320, riskScore: 15 },
-  { id: "balanced-lp", name: "Balanced Liquidity Provision", aprBps: 670, riskScore: 40 },
-  { id: "aggressive-yield", name: "Aggressive Yield Farming", aprBps: 1140, riskScore: 75 },
-];
