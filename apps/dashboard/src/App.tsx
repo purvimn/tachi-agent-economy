@@ -544,7 +544,7 @@ function RunPanel({ onChange }: { onChange: () => void }) {
           <button
             disabled={running || !funded}
             onClick={() => run("/demo/pay")}
-            className="rounded-[3px] bg-btc px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-[#d4760a] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-[3px] bg-btc px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-[#bc0000] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Make a real payment
           </button>
@@ -738,7 +738,9 @@ export default function App() {
         </p>
       )}
 
-      <h1 className="max-w-[24ch] pt-6 pb-10 text-[clamp(2rem,4.6vw,3.6rem)] leading-[1.04] font-bold tracking-[-0.025em] text-balance">
+      <p className="kicker pt-6">Built for Tachi</p>
+
+      <h1 className="max-w-[24ch] pt-3 pb-10 text-[clamp(2rem,4.6vw,3.6rem)] leading-[1.04] font-bold tracking-[-0.025em] text-balance">
         {payments.length === 0 ? (
           <>No agent has paid another yet. </>
         ) : (
@@ -1113,6 +1115,14 @@ export default function App() {
           </details>
         </Section>
       </div>
+
+      <footer className="mt-10 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-rule pt-6 pb-10">
+        <span className="kicker">Built for Tachi</span>
+        <span className="text-sm text-ink-2">Self-custodial Bitcoin agent economy on the Tachi network.</span>
+        <a href="https://tachibtc.com" target="_blank" rel="noreferrer" className="ml-auto text-sm text-btc-ink">
+          tachibtc.com
+        </a>
+      </footer>
     </div>
   );
 }

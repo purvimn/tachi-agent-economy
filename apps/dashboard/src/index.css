@@ -1,16 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
 @import "tailwindcss";
 
+/* Tachi theme — black canvas, brand red, white text, Chakra Petch / Space Mono.
+   Mirrors tachi-website/src/styles/globals.css. The dashboard's components use these
+   semantic tokens, so retargeting them here reskins the whole app. */
 @theme {
-  --color-paper: #e4e9ee;
-  --color-paper-2: #edf1f4;
-  --color-ink: #15202b;
-  --color-ink-2: #4b5a6a;
-  --color-rule: #c2ccd6;
-  --color-btc: #e8840f;
-  --color-btc-ink: #9a5300;
-  --color-ok: #2e6b4f;
-  --font-sans: "Schibsted Grotesk", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-paper: #000000;
+  --color-paper-2: #0d0d0d;
+  --color-ink: #ffffff;
+  --color-ink-2: #b3b3b3;
+  --color-rule: rgba(255, 255, 255, 0.14);
+  --color-btc: #d90000; /* Tachi brand red (--red-bright) */
+  --color-btc-ink: #ff5c5c; /* lighter red for links/text on the dark canvas */
+  --color-ok: #3fb950;
+  --font-sans: "Chakra Petch", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
 }
 
 body {
@@ -31,6 +35,20 @@ a:hover {
 :focus-visible {
   outline: 2px solid var(--color-btc);
   outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-btc);
+  color: #fff;
+}
+
+/* Tachi uses a red uppercase mono label above headings. */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-btc);
 }
 
 /* Plain ledger tables: hierarchy from type and rules, not boxes. */

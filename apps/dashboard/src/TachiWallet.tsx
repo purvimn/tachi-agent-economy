@@ -123,7 +123,7 @@ export default function TachiWallet() {
           <button
             onClick={connect}
             disabled={busy}
-            className="mt-3 rounded-[3px] bg-btc px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-[#d4760a] disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-3 rounded-[3px] bg-btc px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-[#bc0000] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? "Check the extension…" : "Connect TAURUS Vault"}
           </button>
