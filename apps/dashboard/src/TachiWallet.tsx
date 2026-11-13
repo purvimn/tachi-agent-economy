@@ -209,6 +209,35 @@ export function TachiWalletPanel() {
   );
 }
 
+/** Gates the demo economy (treasury funding + action buttons) behind a connected wallet. */
+export function WalletGate({ children }: { children: ReactNode }) {
+  const w = useWallet();
+  if (w.account) return <>{children}</>;
+  return (
+    <div className="mb-14 border-y border-ink py-12 text-center">
+      <p className="kicker">Wallet required</p>
+      <p className="mx-auto mt-3 max-w-[48ch] text-lg">Connect your TAURUS Vault wallet to run the agent economy.</p>
+      <button
+        onClick={w.connect}
+        disabled={w.busy}
+        className="mt-5 rounded-[3px] bg-btc px-6 py-2.5 font-semibold text-ink transition-colors hover:bg-[#bc0000] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {w.busy ? "Connecting…" : "Connect Wallet"}
+      </button>
+      {w.detected === false && (
+        <p className="mt-3 text-sm text-ink-2">
+          No extension detected.{" "}
+          <a href={STORE_URL} target="_blank" rel="noreferrer" className="text-ink underline decoration-rule underline-offset-[3px]">
+            Install TAURUS Vault
+          </a>{" "}
+          and reload.
+        </p>
+      )}
+      {w.error && <p className="mx-auto mt-3 max-w-[60ch] text-sm text-ink-2">{w.error}</p>}
+    </div>
+  );
+}
+
 function Row({ label, value, href, mono }: { label: string; value: string; href?: string; mono?: boolean }) {
   const text = <span className={mono ? "break-all font-mono text-xs" : ""}>{value}</span>;
   return (

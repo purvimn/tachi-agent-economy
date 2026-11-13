@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { TachiWalletProvider, ConnectWalletButton, TachiWalletPanel } from "./TachiWallet";
+import { TachiWalletProvider, ConnectWalletButton, TachiWalletPanel, WalletGate } from "./TachiWallet";
 
 interface Reputation {
   completedJobs: number;
@@ -761,7 +761,9 @@ export default function App() {
 
       <TachiWalletPanel />
 
-      <RunPanel onChange={refresh} />
+      <WalletGate>
+        <RunPanel onChange={refresh} />
+      </WalletGate>
 
       <div className="grid gap-10 pb-14 lg:grid-cols-12">
         <figure className="lg:col-span-7">
