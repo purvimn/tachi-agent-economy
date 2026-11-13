@@ -341,7 +341,7 @@ interface Treasury {
   explorerUrl: string;
   l1ExplorerUrl: string | null;
 }
-type Action = "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "vault" | "loan" | "fund";
+type Action = "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "vault" | "loan" | "fund" | "taurus";
 interface Job {
   action: Action;
   status: "running" | "done" | "failed";
@@ -453,6 +453,30 @@ function JobResult({ job }: { job: Job }) {
           Anchored {r.count} events on Tachi. {tx}
         </>
       );
+    case "taurus":
+      return (
+        <>
+          Self-custodial TAURUS vault created on Bitcoin, funded, and registered on Tachi, then a unilateral exit signed — the owner alone,
+          no daemon or validators.{" "}
+          {(
+            [
+              [r.vaultUrl, "Vault"],
+              [r.depositUrl, "Deposit"],
+              [r.openUrl, "Vault open"],
+              [r.ownerUrl, "Owner"],
+            ] as const
+          )
+            .filter(([href]) => href)
+            .map(([href, label], i) => (
+              <span key={label}>
+                {i > 0 && " · "}
+                <a href={href} target="_blank" rel="noreferrer" className="font-normal text-ink">
+                  {label}
+                </a>
+              </span>
+            ))}
+        </>
+      );
     default:
       return (
         <>
@@ -529,6 +553,7 @@ function RunPanel({ onChange }: { onChange: () => void }) {
               ["/demo/dataset", "Buy a dataset", true],
               ["/demo/burst", "Run 25 paid requests", true],
               ["/demo/vault", "Deposit and withdraw", true],
+              ["/demo/taurus", "Self-custody vault (TAURUS)", true],
               ["/demo/loan", "Lend to an agent", true],
               ["/demo/anchor", "Anchor the log on Tachi", true],
               ["/demo/seed", "Add demo agents", false],

@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Router } from "express";
@@ -14,11 +15,12 @@ import { seedDemo, payOnChain, payBurst, buyDataset, findSellerOnNostr, anchorLo
  */
 export const demoRouter = Router();
 
-const ENV_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../.env");
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const ENV_FILE = path.resolve(REPO_ROOT, ".env");
 const self = () => `http://localhost:${process.env.PORT ?? 4402}`;
 
 interface Job {
-  action: "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "vault" | "loan" | "fund";
+  action: "seed" | "pay" | "burst" | "dataset" | "nostr" | "anchor" | "vault" | "loan" | "fund" | "taurus";
   status: "running" | "done" | "failed";
   steps: string[];
   error?: string;
@@ -127,6 +129,41 @@ demoRouter.post("/demo/fund", (req, res) => {
     const ref = await depositFromL1(network, tachiTx.unhex(secret), txid, step);
     return { txRef: ref, explorerUrl: `${network.explorerUrl}/tx/${ref}` };
   });
+  res.status(ok ? 202 : 409).json(ok ? { ok } : { error: "Another action is still running" });
+});
+
+/**
+ * Runs demo/taurus-poc.ts (a self-custodial TAURUS vault: create, fund, register, sign the exit) and
+ * streams its "▸" lines as steps. The signed exit can't broadcast until the 144-block delay, so this
+ * stops at the signed exit — no day-long wait. Needs TAURUS_MNEMONIC + L1 funding in the server env.
+ * ponytail: spawns the demo script via npx tsx — localhost-demo only, like the rest of this router.
+ */
+demoRouter.post("/demo/taurus", (_req, res) => {
+  const ok = start("taurus", (step) =>
+    new Promise((resolve, reject) => {
+      const links: Record<string, string> = {};
+      const child = spawn("npx", ["tsx", "--env-file=.env", "demo/taurus-poc.ts"], { cwd: REPO_ROOT, env: { ...process.env, TACHI_NETWORK: network.name } });
+      let buf = "";
+      child.stdout.on("data", (d: Buffer) => {
+        buf += d.toString();
+        for (let i; (i = buf.indexOf("\n")) >= 0; ) {
+          const line = buf.slice(0, i).trim();
+          buf = buf.slice(i + 1);
+          if (line.startsWith("▸")) step(line.slice(1).trim());
+          const url = line.match(/https?:\/\/\S+/)?.[0];
+          if (!url) continue;
+          if (line.includes("address (L1)")) links.vaultUrl = url;
+          else if (line.includes("deposit (L1)")) links.depositUrl = url;
+          else if (line.includes("open (Tachi)")) links.openUrl = url;
+          else if (line.includes("owner on Tachi")) links.ownerUrl = url;
+        }
+      });
+      let err = "";
+      child.stderr.on("data", (d: Buffer) => (err += d.toString()));
+      child.on("error", reject);
+      child.on("close", (code) => (code === 0 ? resolve(links) : reject(new Error(err.trim() || `taurus-poc exited with code ${code}`))));
+    }),
+  );
   res.status(ok ? 202 : 409).json(ok ? { ok } : { error: "Another action is still running" });
 });
 
