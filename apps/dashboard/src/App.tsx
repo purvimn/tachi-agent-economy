@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import TachiWallet from "./TachiWallet";
+import { TachiWalletProvider, ConnectWalletButton, TachiWalletPanel } from "./TachiWallet";
 
 interface Reputation {
   completedJobs: number;
@@ -720,6 +720,7 @@ export default function App() {
   const onChainSats = onChain.reduce((s, p) => s + p.amountSats, 0);
 
   return (
+    <TachiWalletProvider>
     <div className="mx-auto max-w-[1240px] px-4 pb-24 sm:px-8">
       <header className="flex flex-wrap items-baseline gap-x-6 gap-y-1 py-5">
         <span className="text-[17px] font-extrabold tracking-tight">Tachi Agent Economy</span>
@@ -727,9 +728,12 @@ export default function App() {
           <span aria-hidden className={`inline-block size-2 rounded-full ${health === "error" ? "bg-red-600" : "bg-ok"}`} />
           {health === "error" ? `Can't reach Tachi ${cfg.network}` : `Connected to Tachi ${cfg.network}`}
         </span>
-        <a href={cfg.explorerUrl} target="_blank" rel="noreferrer" className="ml-auto text-sm">
-          Open explorer
-        </a>
+        <div className="ml-auto flex items-center gap-4">
+          <a href={cfg.explorerUrl} target="_blank" rel="noreferrer" className="text-sm">
+            Open explorer
+          </a>
+          <ConnectWalletButton />
+        </div>
       </header>
 
       {serverDown && (
@@ -755,7 +759,7 @@ export default function App() {
         )}
       </h1>
 
-      <TachiWallet />
+      <TachiWalletPanel />
 
       <RunPanel onChange={refresh} />
 
@@ -1124,5 +1128,6 @@ export default function App() {
         </a>
       </footer>
     </div>
+    </TachiWalletProvider>
   );
 }

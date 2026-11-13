@@ -1,19 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * Connect the TAURUS Vault browser extension (window.tachi, injected at document_start into the MAIN
- * world) and make a transaction with it. The API below is the extension's own provider contract
- * (v0.2.0): connect/getAccountInfo return the account, signVtxoTransfer signs a cooperative VTXO
- * transfer on Tachi. signPsbt exists but the extension reports it "not yet wired", so it's not used here.
- * Store listing: https://chromewebstore.google.com/detail/jelaccmjgipfegedpbdlgmmhikjhmnlo
+ * world) and make a transaction with it. The API is the extension's own provider contract (v0.2.0):
+ * connect/getAccountInfo return the account, signVtxoTransfer signs a cooperative VTXO transfer.
+ * State lives in TachiWalletProvider so the header's Connect button and the body panel share it.
+ * Store: https://chromewebstore.google.com/detail/jelaccmjgipfegedpbdlgmmhikjhmnlo
  */
 interface TachiAccount {
   fingerprint: string;
   accountPath: string;
   accountXpub: string;
   addressType: "p2wpkh";
-  network: string; // "signet" | "regtest"
-  address: string; // L1 payment address
+  network: string;
+  address: string;
   publicKeyHex: string;
   vaultAddress: string;
 }
@@ -35,8 +35,7 @@ declare global {
   }
 }
 
-/** Resolves window.tachi once the extension has injected it, or null if it never shows up. */
-function waitForTachi(timeoutMs = 1500): Promise<TachiProvider | null> {
+function waitForTachi(timeoutMs = 2000): Promise<TachiProvider | null> {
   if (window.tachi?.isTachi) return Promise.resolve(window.tachi);
   return new Promise((resolve) => {
     const done = (v: TachiProvider | null) => {
@@ -53,30 +52,43 @@ function waitForTachi(timeoutMs = 1500): Promise<TachiProvider | null> {
 const STORE_URL = "https://chromewebstore.google.com/detail/jelaccmjgipfegedpbdlgmmhikjhmnlo";
 const err = (e: unknown) => (e && typeof e === "object" && "message" in e ? String((e as Error).message) : String(e));
 const explorer = (net: string) => (net === "regtest" ? "https://regtest.tachibtcscan.com" : "https://signet.tachibtcscan.com");
+const short = (s: string) => (s.length > 16 ? `${s.slice(0, 8)}…${s.slice(-6)}` : s);
 
-export default function TachiWallet() {
-  const [provider, setProvider] = useState<TachiProvider | null | undefined>(undefined); // undefined = detecting
+interface WalletCtx {
+  account: TachiAccount | null;
+  detected: boolean | null; // null = still checking
+  busy: boolean;
+  error: string;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  send: (to: string, sats: string) => Promise<unknown>;
+}
+const Ctx = createContext<WalletCtx | null>(null);
+function useWallet() {
+  const c = useContext(Ctx);
+  if (!c) throw new Error("TachiWalletProvider missing");
+  return c;
+}
+
+export function TachiWalletProvider({ children }: { children: ReactNode }) {
+  const [provider, setProvider] = useState<TachiProvider | null | undefined>(undefined);
   const [account, setAccount] = useState<TachiAccount | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [to, setTo] = useState("");
-  const [sats, setSats] = useState("");
-  const [result, setResult] = useState<unknown>(null);
   const once = useRef(false);
 
   useEffect(() => {
     if (once.current) return;
     once.current = true;
-    waitForTachi().then((p) => setProvider(p));
+    waitForTachi().then(setProvider);
   }, []);
 
   async function connect() {
     setError("");
-    // Read window.tachi live: by the time the user clicks, the extension has injected it even if
-    // the initial passive detection missed it.
+    // Read window.tachi live: by click time the extension has injected it even if passive detection missed it.
     const p = window.tachi ?? provider ?? null;
     if (!p?.isTachi) {
-      setError("TAURUS Vault extension not detected in this browser. Install it (link above), enable it for this site, then reload.");
+      setError("TAURUS Vault extension not detected in this browser. Install it, enable it for this site, then reload.");
       return;
     }
     setBusy(true);
@@ -90,20 +102,72 @@ export default function TachiWallet() {
     }
   }
 
-  async function send() {
-    const p = window.tachi ?? provider;
-    if (!p?.isTachi || !account) return;
+  function disconnect() {
+    setAccount(null);
     setError("");
+  }
+
+  async function send(to: string, sats: string) {
+    const p = window.tachi ?? provider;
+    if (!p?.isTachi) throw new Error("Wallet not connected");
+    // Shape matches the extension's validator: outputs[].valueSats and feeSats are integer strings.
+    return p.signVtxoTransfer({ transfer: { outputs: [{ address: to, valueSats: sats }], feeSats: "0" } });
+  }
+
+  const value: WalletCtx = { account, detected: provider === undefined ? null : provider !== null, busy, error, connect, disconnect, send };
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** Header control: "Connect Wallet", or the connected address (click to disconnect). */
+export function ConnectWalletButton() {
+  const w = useWallet();
+  if (w.account) {
+    return (
+      <button
+        onClick={w.disconnect}
+        title={`Connected: ${w.account.address} — click to disconnect`}
+        className="rounded-[3px] border border-ok px-3 py-1 text-sm font-semibold text-ok hover:bg-paper-2"
+      >
+        {short(w.account.address)}
+      </button>
+    );
+  }
+  return (
+    <button
+      onClick={w.connect}
+      disabled={w.busy}
+      className="rounded-[3px] bg-btc px-3 py-1 text-sm font-semibold text-ink transition-colors hover:bg-[#bc0000] disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {w.busy ? "Connecting…" : "Connect Wallet"}
+    </button>
+  );
+}
+
+/** Body panel: the connected account and a send form. Renders nothing until connected (the
+ *  Connect button lives in the header now). */
+export function TachiWalletPanel() {
+  const w = useWallet();
+  const [to, setTo] = useState("");
+  const [sats, setSats] = useState("");
+  const [result, setResult] = useState<unknown>(null);
+  const [sendErr, setSendErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (!w.account) {
+    return w.error ? <p className="mb-6 border-l-4 border-red-600 pl-3 text-sm">{w.error}</p> : null;
+  }
+  const a = w.account;
+
+  async function doSend() {
+    setSendErr("");
     setResult(null);
-    if (!to.trim()) return setError("Enter a destination address");
-    if (!/^\d+$/.test(sats) || BigInt(sats) <= 0n) return setError("Amount must be a whole number of sats");
+    if (!to.trim()) return setSendErr("Enter a destination address");
+    if (!/^\d+$/.test(sats) || BigInt(sats) <= 0n) return setSendErr("Amount must be a whole number of sats");
     setBusy(true);
     try {
-      // Shape matches the extension's validator: outputs[].valueSats and feeSats are integer strings.
-      const r = await p.signVtxoTransfer({ transfer: { outputs: [{ address: to.trim(), valueSats: sats }], feeSats: "0" } });
-      setResult(r);
+      setResult(await w.send(to.trim(), sats));
     } catch (e) {
-      setError(err(e));
+      setSendErr(err(e));
     } finally {
       setBusy(false);
     }
@@ -112,60 +176,35 @@ export default function TachiWallet() {
   return (
     <div className="mb-14 border-y border-ink py-6">
       <h2 className="text-lg font-semibold">Your TAURUS Vault wallet</h2>
-      {!account ? (
-        <>
-          <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-ink-2">
-            Connect the TAURUS Vault browser extension to use your own account. Signing happens inside the extension — this page never sees
-            your seed.{" "}
-            {provider === null && (
-              <>
-                Not detected?{" "}
-                <a href={STORE_URL} target="_blank" rel="noreferrer" className="text-ink underline decoration-rule underline-offset-[3px]">
-                  Install the extension
-                </a>{" "}
-                and reload.
-              </>
-            )}
-          </p>
-          <button
-            onClick={connect}
-            disabled={busy}
-            className="mt-3 rounded-[3px] bg-btc px-5 py-2.5 font-semibold text-ink transition-colors hover:bg-[#bc0000] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {busy ? "Check the extension…" : "Connect TAURUS Vault"}
-          </button>
-        </>
-      ) : (
-        <div className="mt-3 grid gap-6 lg:grid-cols-12">
-          <dl className="space-y-1 text-sm lg:col-span-5">
-            <Row label="Network" value={account.network} />
-            <Row label="Address" value={account.address} href={`${explorer(account.network)}/address?address=${account.publicKeyHex}`} mono />
-            <Row label="Vault" value={account.vaultAddress} mono />
-            <Row label="Fingerprint" value={account.fingerprint} mono />
-          </dl>
-          <div className="lg:col-span-7">
-            <p className="text-sm font-semibold">Make a transaction — cooperative VTXO transfer</p>
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <label className="text-sm">
-                <span className="block text-ink-2">To (Tachi address)</span>
-                <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="tb1p… / bcrt1p…" className="mt-1 w-72 rounded-[3px] border border-ink bg-paper px-2 py-1.5 font-mono text-xs" />
-              </label>
-              <label className="text-sm">
-                <span className="block text-ink-2">Sats</span>
-                <input value={sats} onChange={(e) => setSats(e.target.value.replace(/[^\d]/g, ""))} placeholder="1000" inputMode="numeric" className="mt-1 w-28 rounded-[3px] border border-ink bg-paper px-2 py-1.5 tabular-nums" />
-              </label>
-              <button onClick={send} disabled={busy} className="rounded-[3px] bg-ink px-4 py-1.5 font-semibold text-paper disabled:opacity-40">
-                {busy ? "Confirm in the extension…" : "Sign & send"}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-ink-2">The extension pops up to confirm and sign; approve it there.</p>
-            {result != null && (
-              <pre className="mt-3 max-w-full overflow-x-auto rounded-[3px] border border-rule bg-paper-2 p-3 text-xs text-ink">{typeof result === "string" ? result : JSON.stringify(result, null, 2)}</pre>
-            )}
+      <div className="mt-3 grid gap-6 lg:grid-cols-12">
+        <dl className="space-y-1 text-sm lg:col-span-5">
+          <Row label="Network" value={a.network} />
+          <Row label="Address" value={a.address} href={`${explorer(a.network)}/address?address=${a.publicKeyHex}`} mono />
+          <Row label="Vault" value={a.vaultAddress} mono />
+          <Row label="Fingerprint" value={a.fingerprint} mono />
+        </dl>
+        <div className="lg:col-span-7">
+          <p className="text-sm font-semibold">Make a transaction — cooperative VTXO transfer</p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="text-sm">
+              <span className="block text-ink-2">To (Tachi address)</span>
+              <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="tb1p… / bcrt1p…" className="mt-1 w-72 rounded-[3px] border border-ink bg-paper px-2 py-1.5 font-mono text-xs" />
+            </label>
+            <label className="text-sm">
+              <span className="block text-ink-2">Sats</span>
+              <input value={sats} onChange={(e) => setSats(e.target.value.replace(/[^\d]/g, ""))} placeholder="1000" inputMode="numeric" className="mt-1 w-28 rounded-[3px] border border-ink bg-paper px-2 py-1.5 tabular-nums" />
+            </label>
+            <button onClick={doSend} disabled={busy} className="rounded-[3px] bg-ink px-4 py-1.5 font-semibold text-paper disabled:opacity-40">
+              {busy ? "Confirm in the extension…" : "Sign & send"}
+            </button>
           </div>
+          <p className="mt-2 text-xs text-ink-2">The extension pops up to confirm and sign; approve it there.</p>
+          {result != null && (
+            <pre className="mt-3 max-w-full overflow-x-auto rounded-[3px] border border-rule bg-paper-2 p-3 text-xs text-ink">{typeof result === "string" ? result : JSON.stringify(result, null, 2)}</pre>
+          )}
+          {sendErr && <p className="mt-3 border-l-4 border-red-600 pl-3 text-sm">{sendErr}</p>}
         </div>
-      )}
-      {error && <p className="mt-3 border-l-4 border-red-600 pl-3 text-sm">{error}</p>}
+      </div>
     </div>
   );
 }
