@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import TachiWallet from "./TachiWallet";
 
 interface Reputation {
   completedJobs: number;
@@ -753,6 +754,8 @@ export default function App() {
       </h1>
 
       <RunPanel onChange={refresh} />
+
+      <TachiWallet />
 
       <div className="grid gap-10 pb-14 lg:grid-cols-12">
         <figure className="lg:col-span-7">
