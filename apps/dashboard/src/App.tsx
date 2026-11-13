@@ -755,9 +755,9 @@ export default function App() {
         )}
       </h1>
 
-      <RunPanel onChange={refresh} />
-
       <TachiWallet />
+
+      <RunPanel onChange={refresh} />
 
       <div className="grid gap-10 pb-14 lg:grid-cols-12">
         <figure className="lg:col-span-7">
