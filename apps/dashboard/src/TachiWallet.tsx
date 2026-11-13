@@ -71,11 +71,18 @@ export default function TachiWallet() {
   }, []);
 
   async function connect() {
-    if (!provider) return;
     setError("");
+    // Read window.tachi live: by the time the user clicks, the extension has injected it even if
+    // the initial passive detection missed it.
+    const p = window.tachi ?? provider ?? null;
+    if (!p?.isTachi) {
+      setError("TAURUS Vault extension not detected in this browser. Install it (link above), enable it for this site, then reload.");
+      return;
+    }
     setBusy(true);
     try {
-      setAccount(await provider.connect());
+      setProvider(p);
+      setAccount(await p.connect());
     } catch (e) {
       setError(err(e));
     } finally {
@@ -84,7 +91,8 @@ export default function TachiWallet() {
   }
 
   async function send() {
-    if (!provider || !account) return;
+    const p = window.tachi ?? provider;
+    if (!p?.isTachi || !account) return;
     setError("");
     setResult(null);
     if (!to.trim()) return setError("Enter a destination address");
@@ -92,7 +100,7 @@ export default function TachiWallet() {
     setBusy(true);
     try {
       // Shape matches the extension's validator: outputs[].valueSats and feeSats are integer strings.
-      const r = await provider.signVtxoTransfer({ transfer: { outputs: [{ address: to.trim(), valueSats: sats }], feeSats: "0" } });
+      const r = await p.signVtxoTransfer({ transfer: { outputs: [{ address: to.trim(), valueSats: sats }], feeSats: "0" } });
       setResult(r);
     } catch (e) {
       setError(err(e));
@@ -101,24 +109,23 @@ export default function TachiWallet() {
     }
   }
 
-  if (provider === undefined) return null; // still detecting; render nothing to avoid a flash
-
   return (
     <div className="mb-14 border-y border-ink py-6">
       <h2 className="text-lg font-semibold">Your TAURUS Vault wallet</h2>
-      {provider === null ? (
-        <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-ink-2">
-          The TAURUS Vault browser extension isn't detected.{" "}
-          <a href={STORE_URL} target="_blank" rel="noreferrer" className="text-ink underline decoration-rule underline-offset-[3px]">
-            Install it
-          </a>{" "}
-          and reload to connect your own vault and sign transactions here.
-        </p>
-      ) : !account ? (
+      {!account ? (
         <>
           <p className="mt-2 max-w-[62ch] text-sm leading-relaxed text-ink-2">
-            Connect the TAURUS Vault extension (v{provider.version}) to use your own keys. Signing happens inside the extension — this page
-            never sees your seed.
+            Connect the TAURUS Vault browser extension to use your own account. Signing happens inside the extension — this page never sees
+            your seed.{" "}
+            {provider === null && (
+              <>
+                Not detected?{" "}
+                <a href={STORE_URL} target="_blank" rel="noreferrer" className="text-ink underline decoration-rule underline-offset-[3px]">
+                  Install the extension
+                </a>{" "}
+                and reload.
+              </>
+            )}
           </p>
           <button
             onClick={connect}
